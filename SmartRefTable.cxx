@@ -1,16 +1,16 @@
 #include"SmartRefTable.h"
+#include"TString.h"
 #include<mutex>
 #include<boost/thread/shared_mutex.hpp>
 #include <algorithm>
 
-ClassImp(SmartRefItem);
+ClassImp(SmartRefItem)
 
-
-SmartRefItem::SmartRefItem(TProcessID* fP,UInt_t uid,TKey* key)
+SmartRefItem::SmartRefItem(TProcessID* fP,UInt_t uid,const char* name)
 {
 	fPID=fP;
 	fUID=uid;
-	fKey=key;
+	fName=name;
 }
 
 Bool_t SmartRefItem::CheckID(TProcessID* fP,UInt_t uid)
@@ -20,68 +20,122 @@ Bool_t SmartRefItem::CheckID(TProcessID* fP,UInt_t uid)
 	return kTRUE;
 }
 
-bool	SmartRefItem::CheckKey(TKey* key)
+bool	SmartRefItem::CheckName(TString t_name)
 {
-	if(key==fKey)
+	if(!t_name.CompareTo(fName))
 		return true;
 	else 
 		return false;
 }
 
-TKey* SmartRefItem::GetKey()
+const char* SmartRefItem::GetName()
 {
-	return fKey;
+	return fName.Data();
 }
 
+/*
+void SmartRefItem::Streamer(TBuffer &R__b)
+{
+	if(gDebug>0)
+		printf("Start to streamer SRItem\n");
+	UShort_t pidf;
+	if(R__b.IsReading())
+	{
+		TObject::Streamer(R__b);
+		R__b>>fUID;
+		R__b>>fKey;
+		R__b>>pidf;
+		pidf += R__b.GetPidOffset();
+		fPID = R__b.ReadProcessID(pidf);
+		Int_t execid = R__b.GetTRefExecId();
+		if (execid) SetBit(execid<<16);
+		if(gDebug>0) printf("Read SRItem success\n");
+	}
+	else
+	{
+		TObject::Streamer(R__b);
+		pidf=R__b.WriteProcessID(fPID);
+		R__b<<pidf;
+		R__b<<fKey;
+		R__b<<fUID;
+		if(gDebug>0) printf("Write SRItem Success\n");
+	}
+}*/
+void SmartRefItem::Streamer(TBuffer &R__b)
+{
+   // Stream an object of class SmartRefItem.
+   UShort_t pidf;
+   UInt_t R__s, R__c;
+   if (R__b.IsReading()) {
+      Version_t R__v = R__b.ReadVersion(&R__s, &R__c); if (R__v) { }
+      TObject::Streamer(R__b);
+	R__b>>pidf;
+	pidf += R__b.GetPidOffset();
+	fPID = R__b.ReadProcessID(pidf);
+	Int_t execid = R__b.GetTRefExecId();
+	if (execid) SetBit(execid<<16);
+	R__b >> fUID;
+      fName.Streamer(R__b);
+      R__b.CheckByteCount(R__s, R__c, SmartRefItem::IsA());
+   } else {
+      R__c = R__b.WriteVersion(SmartRefItem::IsA(), kTRUE);
+      TObject::Streamer(R__b);
+      pidf=R__b.WriteProcessID(fPID);
+	R__b << pidf;
+      R__b << fUID;
+      fName.Streamer(R__b);
+      R__b.SetByteCount(R__c, kTRUE);
+   }
+}
 
-
-ClassImp(SmartRefTable);
+ClassImp(SmartRefTable)
 
 SmartRefTable::SmartRefTable()
 {
 	fFile=0;
 }
 
-SmartRefTable::SmartRefTable(TFile* file)
+SmartRefTable::SmartRefTable(SmartFile* file)
 {
 	fFile=file;
 }
 
-void		SmartRefTable::AddItem(TProcessID* fP,UInt_t uid,TKey* key)
+void		SmartRefTable::AddItem(TProcessID* fP,UInt_t uid,const char* name)
 {
-	SmartRefItem item(fP,uid,key);
+	SmartRefItem item(fP,uid,name);
 	std::lock_guard<boost::shared_mutex> lk(Table_mutex);
 	mSRefTable.push_back(item);
 }
 
-void		SmartRefTable::DeleteItem(TKey* key)
+void		SmartRefTable::DeleteItem(const char* name)
 {
-	vector<SmartRefItem>::iterator it;
-	boost::shared_lock<boost::sharde_mutex> lk(Table_mutex);
-	vector<SmartRefItem>::iterator end=mSRefTable.end();
+	std::vector<SmartRefItem>::iterator it;
+	TString t_name=name;
+	boost::shared_lock<boost::shared_mutex> lk(Table_mutex);
+	std::vector<SmartRefItem>::iterator end=mSRefTable.end();
 	for(it =mSRefTable.begin();it!=end;it++)
-		if((*it).CheckKey(key))
+		if((*it).CheckName(t_name))
 			break;
-	if(it!=end)
-	{
-		lk.unlock();
-		std::lock_guard<boost::shared_mutex> lk2(Table_mutex);
-		mSRefTable.erase(it);
-	}
+	if(it==end)
+		return;
+
+	lk.unlock();
+	std::lock_guard<boost::shared_mutex> lk2(Table_mutex);
+	mSRefTable.erase(it);
 }
 
 TKey*		SmartRefTable::FindItem(TProcessID* fP,UInt_t uid)
 {
-	vector<SmartRefItem>::iterator it;
-	boost::shared_lock<boost::sharde_mutex> lk(Table_mutex);
-	vector<SmartRefItem>::iterator end=mSRefTable.end();
+	std::vector<SmartRefItem>::iterator it;
+	boost::shared_lock<boost::shared_mutex> lk(Table_mutex);
+	std::vector<SmartRefItem>::iterator end=mSRefTable.end();
 	for(it =mSRefTable.begin();it!=end;it++)
 		if((*it).CheckID(fP,uid))
 			break;
-	TKey* key=0;
+	const char* c_name;
 	if(it!=end)
-		key=(*it).GetKey();
-	return key;
+		c_name=(*it).GetName();
+	return fFile->FindKey(c_name);
 }
 
 void 		SmartRefTable::SetFile(SmartFile* file)
@@ -90,8 +144,8 @@ void 		SmartRefTable::SetFile(SmartFile* file)
 	fFile=file;
 }
 
-Bool_t		SmartRefTable::CheckFile(TFile* file)
+Bool_t		SmartRefTable::CheckFile(SmartFile* file)
 {
-	boost::shared_lock<boost::sharde_mutex> lk(Table_mutex);
+	boost::shared_lock<boost::shared_mutex> lk(Table_mutex);
 	return fFile==file;
 }
