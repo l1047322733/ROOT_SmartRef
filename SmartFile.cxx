@@ -1,6 +1,7 @@
 #include "SmartFile.h"
 #include "SmartRefManager.h"
 #include "SmartRefTable.h"
+#include "TObject.h"
 #include <string>
 #include <cstdio>
 
@@ -34,32 +35,19 @@ SmartFile::SmartFile(const char *fname, Option_t *option, const char *ftitle, In
 
 SmartFile::~SmartFile()
 {
+	if(gDebug>0) printf("dtor of SmartFile called\n");
 	Close();
 }
 
 void SmartFile::Close()
 {
-	SmartRefManager* SRM=SmartRefManager::GetManager(0);
-	if(SRM)
-	{
-		if(gDebug>0)
-			printf("Get SRM\n");
-		SmartRefTable* SRT=SRM->RemoveTable(this);
-		if(gDebug>0)
-			printf("Get SRT\n");
-
-		if(SRT)
-			WriteTObject(SRT,"SmartRefTable","WriteDelete");
-		
-		if(gDebug>0) printf("Write SRT to file success\n");
-		delete SRT;
-	}
-	if(gDebug>0) printf("Now use TFile::Close()\n");
+	if(gDebug>0) printf("SmartFile::Close() called\n");
 	TFile::Close();
 }
 
 void SmartFile::Delete(const char *namecycle)
 {
+	if(gDebug>0) printf("SmartFile::Delete() called\n");
 	TObject* dobj=Get(namecycle);
 	if(dobj->TestBit(kIsReferenced))
 	{
@@ -74,6 +62,31 @@ void SmartFile::Delete(const char *namecycle)
 		}
 	}
 	TFile::Delete(namecycle);
+}
+
+void	SmartFile::WriteStreamerInfo()
+{
+	if(gDebug>0) printf("SmartFile::WriteStreamerInfo() called\n");
+	WriteSmartRefTable();
+	TFile::WriteStreamerInfo();
+}
+
+void	SmartFile::WriteSmartRefTable()
+{
+	if(gDebug>0) printf("SmartFile::WriteSmartRefTable() called\n");
+	SmartRefManager* SRM=SmartRefManager::GetManager(0);
+	if(SRM)
+	{
+		if(gDebug>0)	printf("Get SRM\n");
+		SmartRefTable* SRT=SRM->RemoveTable(this);
+		if(SRT)
+		{
+			if(gDebug>0)	printf("Get SRT\n");
+			WriteTObject(SRT,"SmartRefTable","WriteDelete");
+			if(gDebug>0) 	printf("Write SRT to file success\n");
+			delete SRT;
+		}
+	}
 }
 
 TKey*	SmartFile::CreateKey(TDirectory* mother, const TObject* obj, const char* name, Int_t bufsize)

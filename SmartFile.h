@@ -22,6 +22,8 @@ public:
 	virtual ~SmartFile();
 	virtual void 	Close();
 	virtual void 	Delete(const char *namecycle="");
+	virtual void	WriteStreamerInfo();
+	virtual void	WriteSmartRefTable();
 	TKey*	CreateKey(TDirectory* mother, const TObject* obj, const char* name, Int_t bufsize);
 	TKey*	CreateKey(TDirectory* mother, const void* obj, const TClass* cl, const char* name, Int_t bufsize);
 
